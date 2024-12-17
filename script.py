@@ -64,17 +64,13 @@ def get_amazon_product_details(asin):
                 for li in feature_bullets_div.find_all('li') if li.get_text(strip=True)
             ]
         
-        # Extract top reviews
-        top_reviews = extract_top_reviews(soup)
-        
         # Combine all details
         product_details = {
             'ASIN': asin,
             'Title': title,
             'Price': price,
             'Attributes': attributes,
-            'BulletPoints': bullet_points,
-            'TopReviews': top_reviews
+            'BulletPoints': bullet_points
         }
         
         return product_details
@@ -82,31 +78,6 @@ def get_amazon_product_details(asin):
     except requests.exceptions.RequestException as e:
         logging.error(f"Error fetching product details: {e}")
         return None
-
-def extract_top_reviews(soup):
-    """
-    Extract the top reviews for the product
-    
-    :param soup: BeautifulSoup object of the page
-    :return: List of top review details
-    """
-    top_reviews = []
-    reviews_section = soup.find_all('div', {'data-hook': 'review'})
-    
-    if reviews_section:
-        for review_elem in reviews_section:
-            try:
-                review = {
-                    'Title': review_elem.find('a', {'data-hook': 'review-title'}).get_text(strip=True) if review_elem.find('a', {'data-hook': 'review-title'}) else 'No Title',
-                    'Rating': float(review_elem.find('i', {'data-hook': 'review-star-rating'}).get_text(strip=True).split()[0]) if review_elem.find('i', {'data-hook': 'review-star-rating'}) else 'No Rating',
-                    'Author': review_elem.find('span', {'class': 'a-profile-name'}).get_text(strip=True) if review_elem.find('span', {'class': 'a-profile-name'}) else 'No Author',
-                    'ReviewText': review_elem.find('span', {'data-hook': 'review-body'}).get_text(strip=True) if review_elem.find('span', {'data-hook': 'review-body'}) else 'No Review Text'
-                }
-                top_reviews.append(review)
-            except Exception as e:
-                logging.warning(f"Error parsing a review: {e}")
-    
-    return top_reviews
 
 def save_product_details(product_details, filename='product_details.json'):
     """
