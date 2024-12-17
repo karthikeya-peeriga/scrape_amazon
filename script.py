@@ -1,7 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-import re
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_amazon_product_details(asin):
     """
@@ -23,6 +26,8 @@ def get_amazon_product_details(asin):
     }
     
     try:
+        logging.info(f"Fetching product details for ASIN: {asin}")
+        
         # Send GET request
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -39,42 +44,25 @@ def get_amazon_product_details(asin):
         price_symbol_elem = soup.find('span', {'class': 'a-price-symbol'})
         price = f"{price_symbol_elem.get_text(strip=True) if price_symbol_elem else '₹'}{price_whole_elem.get_text(strip=True) if price_whole_elem else 'Price not found'}"
         
-        # Extract product attributes from the overview table
+        # Extract product attributes
         attributes = {}
-        overview_table = soup.find('table', {'class': 'a-normal'})
-        if overview_table:
-            for row in overview_table.find_all('tr'):
-                key_elem = row.find('td', {'class': 'a-span3'})
-                value_elem = row.find('td', {'class': 'a-span9'})
-                
-                if key_elem and value_elem:
-                    key = key_elem.get_text(strip=True)
-                    value = value_elem.get_text(strip=True)
-                    attributes[key] = value
+        product_details_div = soup.find('div', {'id': 'prodDetails'})
+        if product_details_div:
+            for table in product_details_div.find_all('table'):
+                for row in table.find_all('tr'):
+                    key = row.find('th')
+                    value = row.find('td')
+                    if key and value:
+                        attributes[key.get_text(strip=True)] = value.get_text(strip=True)
         
-        # Extract product bullet points
+        # Extract bullet points
         bullet_points = []
         feature_bullets_div = soup.find('div', {'id': 'feature-bullets'})
         if feature_bullets_div:
-            # Look for main bullet points
-            main_ul = feature_bullets_div.find('ul', {'class': 'a-unordered-list'})
-            if main_ul:
-                bullet_points.extend([
-                    li.get_text(strip=True) 
-                    for li in main_ul.find_all('li', {'class': 'a-spacing-mini'})
-                ])
-            
-            # Look for additional bullet points in expanded section
-            expanded_ul = feature_bullets_div.find('ul', {'class': 'a-unordered-list a-vertical a-spacing-none'})
-            if expanded_ul:
-                bullet_points.extend([
-                    li.get_text(strip=True) 
-                    for li in expanded_ul.find_all('li', {'class': 'a-spacing-mini'})
-                ])
-        
-        # Extract product information
-        product_info_elem = soup.find('div', {'id': 'prodDetails'})
-        product_info = product_info_elem.get_text(strip=True) if product_info_elem else ''
+            bullet_points = [
+                li.get_text(strip=True)
+                for li in feature_bullets_div.find_all('li') if li.get_text(strip=True)
+            ]
         
         # Extract top reviews
         top_reviews = extract_top_reviews(soup)
@@ -86,14 +74,13 @@ def get_amazon_product_details(asin):
             'Price': price,
             'Attributes': attributes,
             'BulletPoints': bullet_points,
-            'ProductInfo': product_info,
             'TopReviews': top_reviews
         }
         
         return product_details
     
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching product details: {e}")
+        logging.error(f"Error fetching product details: {e}")
         return None
 
 def extract_top_reviews(soup):
@@ -104,19 +91,20 @@ def extract_top_reviews(soup):
     :return: List of top review details
     """
     top_reviews = []
+    reviews_section = soup.find_all('div', {'data-hook': 'review'})
     
-    # Find the top review section
-    top_review_section = soup.find('div', {'data-hook': 'top-review'})
-    if top_review_section:
-        # Extract each top review
-        for review_elem in top_review_section.find_all('div', {'data-hook': 'review'}):
-            review = {
-                'Title': review_elem.find('a', {'data-hook': 'review-title'}).get_text(strip=True),
-                'Rating': float(review_elem.find('i', {'data-hook': 'review-star-rating'}).get_text(strip=True)[0]),
-                'Author': review_elem.find('span', {'class': 'a-profile-name'}).get_text(strip=True),
-                'ReviewText': review_elem.find('span', {'data-hook': 'review-body'}).get_text(strip=True)
-            }
-            top_reviews.append(review)
+    if reviews_section:
+        for review_elem in reviews_section:
+            try:
+                review = {
+                    'Title': review_elem.find('a', {'data-hook': 'review-title'}).get_text(strip=True) if review_elem.find('a', {'data-hook': 'review-title'}) else 'No Title',
+                    'Rating': float(review_elem.find('i', {'data-hook': 'review-star-rating'}).get_text(strip=True).split()[0]) if review_elem.find('i', {'data-hook': 'review-star-rating'}) else 'No Rating',
+                    'Author': review_elem.find('span', {'class': 'a-profile-name'}).get_text(strip=True) if review_elem.find('span', {'class': 'a-profile-name'}) else 'No Author',
+                    'ReviewText': review_elem.find('span', {'data-hook': 'review-body'}).get_text(strip=True) if review_elem.find('span', {'data-hook': 'review-body'}) else 'No Review Text'
+                }
+                top_reviews.append(review)
+            except Exception as e:
+                logging.warning(f"Error parsing a review: {e}")
     
     return top_reviews
 
@@ -130,7 +118,7 @@ def save_product_details(product_details, filename='product_details.json'):
     if product_details:
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(product_details, f, indent=4, ensure_ascii=False)
-        print(f"Product details saved to {filename}")
+        logging.info(f"Product details saved to {filename}")
 
 # Example usage
 if __name__ == "__main__":
